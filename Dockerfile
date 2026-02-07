@@ -16,9 +16,5 @@ COPY . .
 # Expose port 5000 (Flask default)
 EXPOSE 5000
 
-# Set environment variables
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=development
-
 # Run the Flask application
 CMD ["gunicorn", "-w", "2", "--threads", "4", "-b", "0.0.0.0:5000", "app:app"]
