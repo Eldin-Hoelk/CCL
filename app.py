@@ -38,12 +38,29 @@ app = Flask(__name__)
 # Database path configuration
 db_path = pathlib.Path(__file__).parent / 'library.db'
 
-# Verify database connectivity
+
+# Verify database connectivity and recreate if corrupted
+def recreate_database(db_path):
+    if db_path.exists():
+        try:
+            db_path.unlink()
+            print(f"Deleted corrupted database at {db_path}")
+        except Exception as e:
+            print(f"Failed to delete corrupted database: {e}")
+    # Recreate the database
+    try:
+        check_setup(db_path)
+        print(f"Recreated database at {db_path}")
+    except Exception as e:
+        print(f"Failed to recreate database: {e}")
+
 try:
     conn = sqlite3.connect(str(db_path))
+    conn.execute('SELECT name FROM sqlite_master LIMIT 1')
     conn.close()
 except Exception as e:
     print(f"Failed to connect to database: {e}")
+    recreate_database(db_path)
 
 # ============================================================================
 # TEMPLATE FILTERS
