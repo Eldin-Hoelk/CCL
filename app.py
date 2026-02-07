@@ -735,38 +735,86 @@ def check_authentication():
 @app.route("/login", methods=['GET', 'POST'])
 def login():
     """Handle user login with persistent tokens"""
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
-        # Process the login inputs
-        print(f"Login attempt - Username: {username}, Password: {password}")
-        
-        # You can add authentication logic here
-        if username and password:
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, password FROM uauth WHERE username = ?', (username,))
-            user_row = cursor.fetchone()
-            if user_row and verify_password(user_row[1], password):
-                user_id = user_row[0]
-                raw_token = secrets.token_urlsafe(32)
-                hash = hashlib.sha256(raw_token.encode()).hexdigest()
-                cursor.execute('INSERT INTO uauth_cookies (user_id, cookie) VALUES (?, ?)', (user_id, hash))
-                conn.commit()
-                conn.close()
-                response = make_response(redirect('/'))
-                response.set_cookie('cookie', value=raw_token, max_age=315360000, httponly=True, samesite='Lax')
-                return response
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM sqlite_master WHERE type="table" AND name="uauth"')
+    has_uauth = cursor.fetchone()[0]
+    if not has_uauth:
+        # Table doesn't exist, create it
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS uauth (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS uauth_cookies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                cookie TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES uauth(id)
+            )
+        """)
+        conn.commit()
+    cursor.execute('SELECT COUNT(*) FROM uauth')
+    user_count = cursor.fetchone()[0]
+    if user_count == 0:
+        # No user exists, show signup page
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            if username and password:
+                # Hash password and create user
+                salt = secrets.token_bytes(16)
+                key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+                password_hash = f"{salt.hex()}:{key.hex()}"
+                try:
+                    cursor.execute('INSERT INTO uauth (username, password) VALUES (?, ?)', (username, password_hash))
+                    conn.commit()
+                    # Log user in immediately
+                    user_id = cursor.lastrowid
+                    raw_token = secrets.token_urlsafe(32)
+                    hash = hashlib.sha256(raw_token.encode()).hexdigest()
+                    cursor.execute('INSERT INTO uauth_cookies (user_id, cookie) VALUES (?, ?)', (user_id, hash))
+                    conn.commit()
+                    conn.close()
+                    response = make_response(redirect('/'))
+                    response.set_cookie('cookie', value=raw_token, max_age=315360000, httponly=True, samesite='Lax')
+                    return response
+                except sqlite3.IntegrityError:
+                    return render_template('auth/login.html', error="Username already exists", signup=True)
+            else:
+                return render_template('auth/login.html', error="Please enter both username and password", signup=True)
+        conn.close()
+        return render_template('auth/login.html', signup=True)
+    else:
+        # User exists, show login page
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            print(f"Login attempt - Username: {username}, Password: {password}")
+            if username and password:
+                cursor.execute('SELECT id, password FROM uauth WHERE username = ?', (username,))
+                user_row = cursor.fetchone()
+                if user_row and verify_password(user_row[1], password):
+                    user_id = user_row[0]
+                    raw_token = secrets.token_urlsafe(32)
+                    hash = hashlib.sha256(raw_token.encode()).hexdigest()
+                    cursor.execute('INSERT INTO uauth_cookies (user_id, cookie) VALUES (?, ?)', (user_id, hash))
+                    conn.commit()
+                    conn.close()
+                    response = make_response(redirect('/'))
+                    response.set_cookie('cookie', value=raw_token, max_age=315360000, httponly=True, samesite='Lax')
+                    return response
+                else:
+                    conn.close()
+                    return render_template('auth/login.html', error="Invalid username or password")
             else:
                 conn.close()
-                return render_template('auth/login.html', error="Invalid username or password")
-            
-        else:
-            print("Login failed - missing credentials")
-            return render_template('auth/login.html', error="Please enter both username and password")
-    
-    return render_template('auth/login.html')
+                return render_template('auth/login.html', error="Please enter both username and password")
+        conn.close()
+        return render_template('auth/login.html')
 
 # Logout route
 @app.route("/logout", methods=['POST'])
