@@ -17,8 +17,10 @@ import gzip
 import json
 import atexit
 from threading import Thread
-from flask import Flask, render_template, request, redirect, jsonify, send_file
+from flask import Flask, render_template, request, redirect, jsonify, send_file, make_response
 from urllib.parse import quote, unquote
+import secrets
+import hashlib
 
 app = Flask(__name__)
 
@@ -29,6 +31,9 @@ try:
     conn.close()
 except:
     print("Failed to connect to database")
+
+
+
 
 #allow regex search in templates
 @app.template_filter('regex_search')
@@ -118,11 +123,11 @@ def ensure_backup_directory():
     (BACKUP_DIRECTORY / 'manual').mkdir(exist_ok=True)
 
 def get_db_path():
-    """Get the database path"""
+
     return pathlib.Path(__file__).parent / 'library.db'
 
 def create_backup(backup_type='manual', event_description=None):
-    """Create a compressed backup with metadata"""
+
     if not BACKUP_ENABLED:
         return False
         
@@ -640,6 +645,98 @@ def settings():
     conn.close()
     
     return render_template('settings.html', classes=[dict(row) for row in classes])
+
+def verify_password(stored_password, provided_password):
+    salt_hex, key_hex = stored_password.split(':')
+    salt = bytes.fromhex(salt_hex)
+    new_key = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt, 100000)
+    return secrets.compare_digest(new_key.hex(), key_hex)
+
+@app.before_request
+def check_authentication():
+    # Allow access to login page and static files
+    if request.endpoint in ['login'] or request.path.startswith('/static/'):
+        return
+    
+    # Check for persistent token cookie
+    token = request.cookies.get('cookie')
+    if not token:
+        return redirect('/login')
+    
+    # Verify token against database
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        cursor.execute('SELECT username FROM uauth WHERE cookie = ?', (token_hash,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            # Invalid token, redirect to login
+            return redirect('/login')
+    except Exception:
+        # Database error, redirect to login for safety
+        return redirect('/login')
+
+# login page
+@app.route("/login", methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # Process the login inputs
+        print(f"Login attempt - Username: {username}, Password: {password}")
+        
+        # You can add authentication logic here
+        if username and password:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute('SELECT password FROM uauth WHERE username = ?', (username,))
+            stored_password = cursor.fetchone()
+            
+            if stored_password and verify_password(stored_password[0], password):
+                # password correct
+                raw_token = secrets.token_urlsafe(32)
+                hash = hashlib.sha256(raw_token.encode()).hexdigest()                
+                cursor.execute(
+                    'UPDATE uauth SET cookie = ? WHERE username = ?', (hash, username)
+                )
+                conn.commit()
+                conn.close()
+                response = make_response(redirect('/'))
+                response.set_cookie('cookie',value=raw_token, max_age=315360000, httponly=True, samesite='Lax')
+                return response
+            else:
+                conn.close()
+                return render_template('auth/login.html', error="Invalid username or password")
+            
+        else:
+            print("Login failed - missing credentials")
+            return render_template('auth/login.html', error="Please enter both username and password")
+    
+    return render_template('auth/login.html')
+
+# logout route
+@app.route("/logout", methods=['POST'])
+def logout():
+    # Clear the persistent token from database
+    token = request.cookies.get('cookie')
+    if token:
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            cursor.execute('UPDATE uauth SET cookie = NULL WHERE cookie = ?', (token_hash,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass  # If database error, still clear the cookie
+    
+    response = make_response(redirect('/login'))
+    response.set_cookie('cookie', '', expires=0)
+    return response
 
 # main page load
 @app.route("/")
