@@ -717,10 +717,13 @@ def check_authentication():
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
         token_hash = hashlib.sha256(token.encode()).hexdigest()
-        cursor.execute('SELECT username FROM uauth WHERE cookie = ?', (token_hash,))
+        cursor.execute('''
+            SELECT u.username FROM uauth u
+            JOIN uauth_cookies c ON u.id = c.user_id
+            WHERE c.cookie = ?
+        ''', (token_hash,))
         result = cursor.fetchone()
         conn.close()
-        
         if not result:
             # Invalid token, redirect to login
             return redirect('/login')
@@ -743,20 +746,17 @@ def login():
         if username and password:
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()
-            cursor.execute('SELECT password FROM uauth WHERE username = ?', (username,))
-            stored_password = cursor.fetchone()
-            
-            if stored_password and verify_password(stored_password[0], password):
-                # password correct
+            cursor.execute('SELECT id, password FROM uauth WHERE username = ?', (username,))
+            user_row = cursor.fetchone()
+            if user_row and verify_password(user_row[1], password):
+                user_id = user_row[0]
                 raw_token = secrets.token_urlsafe(32)
-                hash = hashlib.sha256(raw_token.encode()).hexdigest()                
-                cursor.execute(
-                    'UPDATE uauth SET cookie = ? WHERE username = ?', (hash, username)
-                )
+                hash = hashlib.sha256(raw_token.encode()).hexdigest()
+                cursor.execute('INSERT INTO uauth_cookies (user_id, cookie) VALUES (?, ?)', (user_id, hash))
                 conn.commit()
                 conn.close()
                 response = make_response(redirect('/'))
-                response.set_cookie('cookie',value=raw_token, max_age=315360000, httponly=True, samesite='Lax')
+                response.set_cookie('cookie', value=raw_token, max_age=315360000, httponly=True, samesite='Lax')
                 return response
             else:
                 conn.close()
@@ -779,7 +779,7 @@ def logout():
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()
             token_hash = hashlib.sha256(token.encode()).hexdigest()
-            cursor.execute('UPDATE uauth SET cookie = NULL WHERE cookie = ?', (token_hash,))
+            cursor.execute('DELETE FROM uauth_cookies WHERE cookie = ?', (token_hash,))
             conn.commit()
             conn.close()
         except Exception:
@@ -819,45 +819,104 @@ def main_page():
 # File upload routes for settings
 @app.route('/upload_books', methods=['POST'])
 def upload_books():
-    """Handle bulk book import via CSV upload"""
+    
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file selected'})
-    
     file = request.files['file']
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'})
-    
-    if file and file.filename.lower().endswith('.csv'):
-        # Trigger backup before major data change
-        trigger_event_backup('bulk_book_import')
-        
-        return jsonify({'success': True, 'message': 'Book list imported successfully'})
-    else:
+    if not file.filename.lower().endswith('.csv'):
         return jsonify({'success': False, 'error': 'Please select a CSV file'})
+
+    # Trigger backup before major data change
+    trigger_event_backup('bulk_book_import')
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
+            file.save(temp_file.name)
+            temp_path = temp_file.name
+
+        print('[upload_books] Reading CSV into DataFrame...')
+        df = pandas.read_csv(temp_path, quotechar='"', doublequote=True)
+        print(f'[upload_books] DataFrame shape: {df.shape}')
+        print(f'[upload_books] DataFrame columns: {list(df.columns)}')
+
+        expected_cols = [
+            'Local Number', 'Title', 'Sub Title', 'Author(s)', 
+            'Call 1', 'Call 2', 'Publisher', 'Published', 'ISBN #', 'Location'
+        ]
+        present_cols = [col for col in expected_cols if col in df.columns]
+        print(f'[upload_books] Present columns: {present_cols}')
+        df_selected = df[present_cols].copy()
+        col_map = {
+            'Local Number': 'localnumber',
+            'Title': 'title',
+            'Sub Title': 'subtitle',
+            'Author(s)': 'author',
+            'Call 1': 'call1',
+            'Call 2': 'call2',
+            'Publisher': 'publisher',
+            'Published': 'published',
+            'ISBN #': 'isbn',
+            'Location': 'booklocation'
+        }
+        df_selected.rename(columns=col_map, inplace=True)
+
+        db_path = pathlib.Path(__file__).parent / 'library.db'
+        conn = sqlite3.connect(str(db_path))
+        df_selected.to_sql('books', conn, index=False, if_exists='replace')
+        conn.close()
+        print('[upload_books] Database write complete.')
+        import os
+        os.unlink(temp_path)
+        return jsonify({'success': True, 'message': 'Book list imported successfully'})
+    except Exception as e:
+        import traceback
+        print('[upload_books] Exception occurred:')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Import failed: {str(e)}'})
 
 # Convert book data to CSV
 @app.route('/export_books')
 def export_books():
-    """Export all books to CSV format"""
-
+    """Export all books to CSV format matching import template"""
+    import io
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    
-    cur.execute('SELECT * FROM books ORDER BY title')
+    # Use the same columns/order as import_books.py expects
+    columns = [
+        'Local Number', 'Title', 'Sub Title', 'Author(s)',
+        'Call 1', 'Call 2', 'Publisher', 'Published', 'ISBN #', 'Location'
+    ]
+    db_cols = [
+        'localnumber', 'title', 'subtitle', 'author',
+        'call1', 'call2', 'publisher', 'published', 'isbn', 'booklocation'
+    ]
+    cur.execute(f'SELECT {", ".join(db_cols)} FROM books ORDER BY title')
     books = cur.fetchall()
     conn.close()
-    
     output = io.StringIO()
-    output.write('title,subtitle,author,localnumber,publisher,published\n')
-    
+    # Build DataFrame from books
+    data = []
     for book in books:
-        output.write(f'"{book["title"]}","{book["subtitle"] or ""}","{book["author"] or ""}","{book["localnumber"]}","{book["publisher"] or ""}","{book["published"] or ""}"\n')
-    
+        data.append({
+            'Local Number': book['localnumber'] or '',
+            'Title': book['title'] or '',
+            'Sub Title': book['subtitle'] or '',
+            'Author(s)': book['author'] or '',
+            'Call 1': book['call1'] or '',
+            'Call 2': book['call2'] or '',
+            'Publisher': book['publisher'] or '',
+            'Published': book['published'] or '',
+            'ISBN #': book['isbn'] or '',
+            'Location': book['booklocation'] or ''
+        })
+    df = pandas.DataFrame(data, columns=columns)
+    df.to_csv(output, index=False, quoting=1)  # quoting=1 is csv.QUOTE_ALL
     response = make_response(output.getvalue())
     response.headers['Content-Disposition'] = 'attachment; filename=books_export.csv'
     response.headers['Content-type'] = 'text/csv'
-    
     return response
 
 # Find unreturned books and export to CSV
@@ -1237,13 +1296,12 @@ def check_setup(data_path):
     conn = sqlite3.connect(str(data_path))
     cur = conn.cursor()
     cur.executescript('''
-
     CREATE TABLE IF NOT EXISTS classes (
         id INTEGER PRIMARY KEY,
         teacher_name TEXT,
         name TEXT NOT NULL UNIQUE
     );
-    
+
     CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY,
         fax_id TEXT UNIQUE,
@@ -1251,7 +1309,7 @@ def check_setup(data_path):
         class_id INTEGER,
         FOREIGN KEY (class_id) REFERENCES classes(id)
     );
-    
+
     CREATE TABLE IF NOT EXISTS books (
         id INTEGER PRIMARY KEY,
         localnumber TEXT NOT NULL UNIQUE,
@@ -1265,7 +1323,7 @@ def check_setup(data_path):
         isbn TEXT,
         booklocation TEXT
     );
-    
+
     CREATE TABLE IF NOT EXISTS checkouts (
         id INTEGER PRIMARY KEY,
         student_id INTEGER NOT NULL,
@@ -1275,7 +1333,43 @@ def check_setup(data_path):
         FOREIGN KEY (student_id) REFERENCES students(id),
         FOREIGN KEY (book_id) REFERENCES books(id)
     );
-''')
+
+    CREATE TABLE IF NOT EXISTS uauth (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS uauth_cookies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        cookie TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES uauth(id)
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
+        title, subtitle, author, localnumber, booklocation,
+        tokenize = 'trigram'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS books_ad AFTER DELETE ON books BEGIN
+        DELETE FROM books_fts WHERE localnumber = OLD.localnumber;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS books_as AFTER INSERT ON books BEGIN
+        INSERT INTO books_fts (title, subtitle, author, localnumber, booklocation)
+        VALUES (NEW.title, NEW.subtitle, NEW.author, NEW.localnumber, NEW.booklocation);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS books_au AFTER UPDATE ON books BEGIN
+        UPDATE books_fts SET
+            title = NEW.title,
+            subtitle = NEW.subtitle,
+            author = NEW.author,
+            booklocation = NEW.booklocation
+        WHERE localnumber = NEW.localnumber;
+    END;
+    ''')
     conn.close()
 
 def check_database_validity(db_path, output_path=pathlib.Path(__file__).parent / 'books_missing_data.csv'):
@@ -1366,22 +1460,12 @@ def restore_backup_route():
             return jsonify({'success': False, 'error': 'No backup file specified'})
         
         success, message = restore_backup(backup_file)
+        # Ensure schema is up-to-date after restore
+        check_setup(db_path)
         return jsonify({'success': success, 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/download_backup/<path:backup_file>')
-def download_backup(backup_file):
-    """Download a backup file to local system"""
-    """Download a backup file"""
-    try:
-        backup_path = pathlib.Path(backup_file)
-        if not backup_path.exists() or not str(backup_path).startswith(str(BACKUP_DIRECTORY)):
-            return jsonify({'error': 'Invalid backup file'}), 404
-            
-        return send_file(backup_path, as_attachment=True)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/clear_checkouts', methods=['POST'])
 def clear_checkouts():
@@ -1418,7 +1502,7 @@ def clear_checkouts():
 
 if __name__ == '__main__':
     # For development only - use gunicorn for production
-    app.run(host='0.0.0.0', port=5000, debug=True, ssl_context=('CCL/nginx/ssl/selfsigned.crt', 'CCL/nginx/ssl/selfsigned.key'))
+    app.run(host='0.0.0.0', port=5000, debug=False) #, ssl_context=('CCL/nginx/ssl/selfsigned.crt', 'CCL/nginx/ssl/selfsigned.key'))
 
 # WSGI entry point for production servers
 application = app
