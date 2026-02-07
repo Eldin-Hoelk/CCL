@@ -1418,7 +1418,7 @@ def clear_checkouts():
 
 if __name__ == '__main__':
     # For development only - use gunicorn for production
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, ssl_context=('CCL/nginx/ssl/selfsigned.crt', 'CCL/nginx/ssl/selfsigned.key'))
 
 # WSGI entry point for production servers
 application = app

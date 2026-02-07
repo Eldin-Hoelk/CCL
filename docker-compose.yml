@@ -4,17 +4,24 @@ services:
   ccalibrary:
     image: my-cca-library
     container_name: ccalibrary-app
-
-    ports:
-      - "5000:5000"
-
+    expose:
+      - "5000"
     volumes:
       - .:/app
       - ./library.db:/app/library.db
-
     environment:
       - FLASK_DEBUG=1
-
     working_dir: /app
-
     restart: unless-stopped
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/letsencrypt
+    depends_on:
+      - ccalibrary
