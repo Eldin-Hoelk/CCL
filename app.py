@@ -1417,4 +1417,8 @@ def clear_checkouts():
 # ============================================================================
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # For development only - use gunicorn for production
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+# WSGI entry point for production servers
+application = app
