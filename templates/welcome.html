@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block body %}
+
+<section class="hero is-primary is-medium" style="border-radius: 0.75rem; overflow: hidden; margin: 1rem;">
+    <div class="hero-body">
+        <div class="container has-text-centered">
+            <h1 class="title is-1 is-size-3-mobile">
+                Welcome to CCA Library
+            </h1>
+            <h2 class="subtitle is-4 is-size-5-mobile mt-3">
+                Your comprehensive library management system
+            </h2>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <!-- Statistics Cards -->
+        <div class="columns is-multiline is-centered mb-6">
+            <div class="column is-6-desktop is-12-tablet">
+                <div class="box has-text-centered" style="height: 100%; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: nowrap;">
+                        <span class="icon has-text-primary" style="font-size: 3rem; flex-shrink: 0;">
+                            <i class="fas fa-book"></i>
+                        </span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; white-space: nowrap;">
+                            <p class="title is-2 mb-0 ml-2">{{ book_count }}</p>
+                            <p class="title is-2 mb-0"> Total Books</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="column is-6-desktop is-12-tablet">
+                <div class="box has-text-centered" style="height: 100%; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: nowrap;">
+                        <span class="icon has-text-info" style="font-size: 3rem; flex-shrink: 0;">
+                            <i class="fas fa-user-graduate"></i>
+                        </span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; white-space: nowrap;">
+                            <p class="title is-2 mb-0 ml-2">{{ student_count }}</p>
+                            <p class="title is-2 mb-0"> Students</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="column is-6-desktop is-12-tablet">
+                <div class="box has-text-centered" style="height: 100%; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: nowrap;">
+                        <span class="icon has-text-success" style="font-size: 3rem; flex-shrink: 0;">
+                            <i class="fas fa-users"></i>
+                        </span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; white-space: nowrap;">
+                            <p class="title is-2 mb-0 ml-2">{{ class_count }}</p>
+                            <p class="title is-2 mb-0"> Classes</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="column is-6-desktop is-12-tablet">
+                <div class="box has-text-centered" style="height: 100%; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: nowrap;">
+                        <span class="icon has-text-warning" style="font-size: 3rem; flex-shrink: 0;">
+                            <i class="fas fa-clock"></i>
+                        </span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; white-space: nowrap;">
+                            <p class="title is-2 mb-0 ml-2">{{ outstanding_count }}</p>
+                            <p class="title is-2 mb-0">Outstanding Checkouts</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="box">
+            <h3 class="title is-4 has-text-centered mb-5">Quick Actions</h3>
+            <div class="columns is-multiline is-centered">
+                <div class="column is-4-desktop is-6-tablet">
+                    <a href="{{ url_for('class_search') }}" class="button is-primary is-fullwidth is-large">
+                        <span class="icon">
+                            <i class="fas fa-search"></i>
+                        </span>
+                        <span>Search Library</span>
+                    </a>
+                </div>
+                
+                <div class="column is-4-desktop is-6-tablet">
+                    <a href="{{ url_for('main_page') }}" class="button is-info is-fullwidth is-large">
+                        <span class="icon">
+                            <i class="fas fa-tachometer-alt"></i>
+                        </span>
+                        <span>View Dashboard</span>
+                    </a>
+                </div>
+                
+                <div class="column is-4-desktop is-6-tablet">
+                    <a href="{{ url_for('settings') }}" class="button is-link is-fullwidth is-large">
+                        <span class="icon">
+                            <i class="fas fa-cog"></i>
+                        </span>
+                        <span>Manage Settings</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Features Overview -->
+        <div class="content mt-6">
+            <h3 class="title is-4 has-text-centered mb-5">System Features</h3>
+            <div class="columns is-multiline">
+                <div class="column is-4">
+                    <div class="box" style="height: 100%;">
+                        <h4 class="title is-5 has-text-primary">
+                            <span class="icon">
+                                <i class="fas fa-book-open"></i>
+                            </span>
+                            Book Management
+                        </h4>
+                        <p>Add, edit, and track books with detailed information including ISBN lookup, barcode generation, and location tracking.</p>
+                    </div>
+                </div>
+                
+                <div class="column is-4">
+                    <div class="box" style="height: 100%;">
+                        <h4 class="title is-5 has-text-info">
+                            <span class="icon">
+                                <i class="fas fa-user-friends"></i>
+                            </span>
+                            Student Tracking
+                        </h4>
+                        <p>Manage student records, checkout history, and class assignments with easy-to-use interfaces.</p>
+                    </div>
+                </div>
+                
+                <div class="column is-4">
+                    <div class="box" style="height: 100%;">
+                        <h4 class="title is-5 has-text-success">
+                            <span class="icon">
+                                <i class="fas fa-exchange-alt"></i>
+                            </span>
+                            Checkout System
+                        </h4>
+                        <p>Track book checkouts, returns, and overdue items with automated due date calculations and notifications.</p>
+                    </div>
+                </div>
+                
+                <div class="column is-4">
+                    <div class="box" style="height: 100%;">
+                        <h4 class="title is-5 has-text-warning">
+                            <span class="icon">
+                                <i class="fas fa-chalkboard-teacher"></i>
+                            </span>
+                            Class Organization
+                        </h4>
+                        <p>Create and manage classes, assign students, and track reading activities by class group.</p>
+                    </div>
+                </div>
+                
+                <div class="column is-4">
+                    <div class="box" style="height: 100%;">
+                        <h4 class="title is-5 has-text-danger">
+                            <span class="icon">
+                                <i class="fas fa-search"></i>
+                            </span>
+                            Full-Text Search
+                        </h4>
+                        <p>Powerful search functionality across books, students, and classes with instant results.</p>
+                    </div>
+                </div>
+                
+                <div class="column is-4">
+                    <div class="box" style="height: 100%;">
+                        <h4 class="title is-5 has-text-link">
+                            <span class="icon">
+                                <i class="fas fa-database"></i>
+                            </span>
+                            Data Management
+                        </h4>
+                        <p>Import/export data via CSV, automatic backups, and comprehensive reporting tools.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

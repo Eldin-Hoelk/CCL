@@ -922,6 +922,35 @@ def logout():
     response.set_cookie('cookie', '', expires=0)
     return response
 
+# Welcome/Landing page
+@app.route("/welcome")
+def welcome_page():
+    """Render the welcome/landing page with library overview"""
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    
+    # Get statistics for the welcome page
+    cur.execute('SELECT COUNT(*) as total_books FROM books')
+    book_count = cur.fetchone()['total_books']
+    
+    cur.execute('SELECT COUNT(*) as total_students FROM students')
+    student_count = cur.fetchone()['total_students']
+    
+    cur.execute('SELECT COUNT(*) as total_classes FROM classes')
+    class_count = cur.fetchone()['total_classes']
+    
+    cur.execute('SELECT COUNT(*) as outstanding FROM checkouts WHERE return_date IS NULL')
+    outstanding_count = cur.fetchone()['outstanding']
+    
+    conn.close()
+    
+    return render_template('welcome.html', 
+                         book_count=book_count,
+                         student_count=student_count,
+                         class_count=class_count,
+                         outstanding_count=outstanding_count)
+
 # Main page load
 @app.route("/")
 def main_page():
