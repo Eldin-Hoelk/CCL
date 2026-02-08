@@ -501,8 +501,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.json())
                 .then(data => {
                     console.log('Book search results:', data);
-                    if (data.length > 0) {
-                        bookResults.innerHTML = data.map(b => 
+                    const books = data.books || [];
+                    if (books.length > 0) {
+                        bookResults.innerHTML = books.map(b => 
                             `<div class="book-option" data-title="${b.title}" style="padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #6a9a75; background: #2b2d31; color: white;">${b.title} by ${b.author}</div>`
                         ).join('');
                         bookResults.style.display = 'block';
@@ -539,8 +540,9 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch(`/search_books?q=${encodeURIComponent(query)}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.length > 0) {
-                        barcodeBookResults.innerHTML = data.map(b => 
+                    const books = data.books || [];
+                    if (books.length > 0) {
+                        barcodeBookResults.innerHTML = books.map(b => 
                             `<div class="barcode-book-option" 
                                 data-title="${b.title}" 
                                 data-localnumber="${b.localnumber || ''}"
