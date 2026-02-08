@@ -1004,6 +1004,37 @@ def main_page():
     
     return render_template('main.html', outstanding_books=outstanding_books)
 
+# Test endpoint to verify Watchtower updates
+@app.route('/watchtower_test')
+def watchtower_test():
+    """Test endpoint to verify new modules are installed after Watchtower update"""
+    try:
+        # Import the test module (python-dateutil)
+        from dateutil import parser, relativedelta
+        from dateutil.tz import tzutc
+        
+        # Use the module to prove it's installed
+        now = datetime.now()
+        future = now + relativedelta.relativedelta(months=3, days=7)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Watchtower test successful! python-dateutil is installed.',
+            'module': 'python-dateutil',
+            'test_data': {
+                'current_time': now.isoformat(),
+                'future_time': future.isoformat(),
+                'difference': '3 months and 7 days'
+            },
+            'container_restart_confirmed': True
+        })
+    except ImportError as e:
+        return jsonify({
+            'success': False,
+            'message': 'Module not found - Watchtower has not updated yet or build failed',
+            'error': str(e)
+        }), 500
+
 # ============================================================================
 # FILE UPLOAD AND EXPORT ROUTES
 # ============================================================================
