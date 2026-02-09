@@ -137,7 +137,7 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+<script src="https://unpkg.com/@zxing/library@latest"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const modal = document.getElementById('checkout-modal');
@@ -209,75 +209,54 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('No file selected');
             return;
         }
-        if (file) {
-            console.log('Processing file:', file.name, file.type);
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const img = new Image();
-                img.onload = function() {
-                    // Use HTML5 Canvas to get image data and extract barcode
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
-                    
-                    // Try to detect barcode using simple image processing
-                    detectBarcode(canvas);
-                };
-                img.src = event.target.result;
+        
+        console.log('Processing file:', file.name, file.type);
+        
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                detectBarcodeZXing(img);
             };
-            reader.readAsDataURL(file);
-        }
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
     });
 
-    function detectBarcode(canvas) {
-        console.log('Starting barcode detection...');
+    function detectBarcodeZXing(img) {
+        console.log('Starting ZXing barcode detection...');
         
-        if (typeof Quagga === 'undefined') {
-            alert('Barcode scanner not loaded. Please try again or enter the number manually.');
+        if (typeof ZXing === 'undefined') {
+            alert('Barcode scanner not loaded. Please refresh the page and try again, or enter the number manually.');
             return;
         }
         
-        const imageData = canvas.toDataURL('image/png');
-        
-        // Try to detect barcode with optimized settings
-        Quagga.decodeSingle({
-            src: imageData,
-            numOfWorkers: 0,
-            locate: true,
-            inputStream: {
-                size: 800
-            },
-            locator: {
-                patchSize: "medium",
-                halfSample: true
-            },
-            decoder: {
-                readers: [
-                    "code_128_reader",
-                    "ean_reader",
-                    "ean_8_reader",
-                    "code_39_reader",
-                    "upc_reader",
-                    "upc_e_reader"
-                ],
-                multiple: false
-            },
-            locate: true
-        }, function(result) {
-            console.log('Barcode detection result:', result);
+        try {
+            const codeReader = new ZXing.BrowserMultiFormatReader();
             
-            if (result && result.codeResult) {
-                console.log('Barcode detected:', result.codeResult.code);
-                bookLocalId.value = result.codeResult.code;
-                bookLocalId.dispatchEvent(new Event('input'));
-                alert('Barcode detected: ' + result.codeResult.code);
-            } else {
-                console.log('No barcode detected');
-                alert('No barcode detected. Make sure the barcode is clear and well-lit. Try again or enter the number manually.');
-            }
-        });
+            // Create a canvas to get image data
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Decode from the canvas
+            codeReader.decodeFromCanvas(canvas)
+                .then(result => {
+                    console.log('Barcode detected:', result.text);
+                    bookLocalId.value = result.text;
+                    bookLocalId.dispatchEvent(new Event('input'));
+                    alert('Barcode detected: ' + result.text);
+                })
+                .catch(err => {
+                    console.error('Barcode detection error:', err);
+                    alert('No barcode detected. Make sure the barcode is clear, well-lit, and fully visible in the photo. Try again or enter the number manually.');
+                });
+        } catch (error) {
+            console.error('Error initializing barcode scanner:', error);
+            alert('Error with barcode scanner: ' + error.message);
+        }
     }
 
     // Open modal when checkout button is clicked
