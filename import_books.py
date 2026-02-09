@@ -18,6 +18,9 @@ df_selected.columns = [
     'call1', 'call2', 'publisher', 'published', 'isbn', 'booklocation'
 ]
 
+# Add cover_image column as NULL so it's preserved during import
+df_selected['cover_image'] = None
+
 try:
     db_path = pathlib.Path(__file__).parent / 'library.db'
     conn = sqlite3.connect(str(db_path))
