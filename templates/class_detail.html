@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const videoElement = document.getElementById('barcode-video');
     const closeCameraBtn = document.getElementById('close-camera-btn');
     
-    barcodeScanBtn.addEventListener('click', async function(e) {
+    barcodeScanBtn.addEventListener('click', function(e) {
         e.preventDefault();
         
         if (typeof ZXing === 'undefined') {
@@ -221,20 +221,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             codeReader = new ZXing.BrowserMultiFormatReader();
             
-            // Get available video devices
-            const videoInputDevices = await codeReader.listVideoInputDevices();
-            
-            if (videoInputDevices.length === 0) {
-                alert('No camera found. Please check camera permissions.');
-                cameraModal.classList.remove('is-active');
-                return;
-            }
-            
-            // Use the first camera (usually back camera on mobile)
-            const selectedDeviceId = videoInputDevices[0].deviceId;
-            
-            // Start continuous decode from video device
-            codeReader.decodeFromVideoDevice(selectedDeviceId, 'barcode-video', (result, err) => {
+            // Start continuous decode from default video device (no device ID = use default camera)
+            codeReader.decodeFromVideoDevice(undefined, 'barcode-video', (result, err) => {
                 if (result) {
                     console.log('Barcode detected:', result.text);
                     bookLocalId.value = result.text;
