@@ -1049,7 +1049,14 @@ def upload_books():
         if suffix == '.xlsx':
             df = pandas.read_excel(temp_path)
         else:
-            df = pandas.read_csv(temp_path, quotechar='"', doublequote=True)
+            df = pandas.read_csv(
+                temp_path,
+                quotechar='"',
+                doublequote=True,
+                skipinitialspace=True,
+                engine='python',
+                on_bad_lines='warn'
+            )
         print(f'[upload_books] DataFrame shape: {df.shape}')
         print(f'[upload_books] DataFrame columns: {list(df.columns)}')
 
@@ -1079,6 +1086,47 @@ def upload_books():
         df_selected = df[list(col_rename_map.keys())].copy()
         df_selected.rename(columns=col_rename_map, inplace=True)
 
+        total_rows = len(df)
+        max_detail_items = 50
+
+        if len(df_selected) > 0:
+            df_selected['__row_number'] = df_selected.index + 2
+
+        required_cols = ['localnumber', 'title', 'author']
+        missing_required = [col for col in required_cols if col not in df_selected.columns]
+        if missing_required:
+            return jsonify({'success': False, 'error': f'Missing required column(s): {", ".join(missing_required)}'})
+
+        for col in required_cols:
+            df_selected[col] = df_selected[col].fillna('').astype(str).str.strip()
+
+        invalid_required = (
+            (df_selected['localnumber'] == '') |
+            (df_selected['title'] == '') |
+            (df_selected['author'] == '')
+        )
+        skipped_missing_required = int(invalid_required.sum())
+        missing_required_rows = []
+        if skipped_missing_required:
+            missing_required_rows = (
+                df_selected.loc[invalid_required, '__row_number']
+                .head(max_detail_items)
+                .astype(int)
+                .tolist()
+            )
+        if skipped_missing_required:
+            df_selected = df_selected[~invalid_required].copy()
+
+        before_dedup_count = len(df_selected)
+        duplicate_mask = df_selected.duplicated(subset=['localnumber'], keep='first')
+        duplicate_localnumbers = (
+            df_selected.loc[duplicate_mask, 'localnumber']
+            .head(max_detail_items)
+            .tolist()
+        )
+        df_selected = df_selected.drop_duplicates(subset=['localnumber'], keep='first')
+        skipped_duplicate_localnumbers = before_dedup_count - len(df_selected)
+
         db_path = pathlib.Path(__file__).parent / 'library.db'
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
@@ -1090,8 +1138,13 @@ def upload_books():
         
         books_to_add = df_selected[~df_selected['localnumber'].isin(existing_localnumbers)]
         duplicates_skipped = len(df_selected) - len(books_to_add)
+        duplicate_existing_localnumbers = (
+            df_selected.loc[df_selected['localnumber'].isin(existing_localnumbers), 'localnumber']
+            .head(max_detail_items)
+            .tolist()
+        )
         
-        print(f'[upload_books] Total in file: {len(df_selected)}, New books: {len(books_to_add)}, Duplicates: {duplicates_skipped}')
+        print(f'[upload_books] Total in file: {len(df_selected)}, New books: {len(books_to_add)}, Duplicates: {duplicates_skipped}, Skipped missing required: {skipped_missing_required}, Skipped duplicate localnumbers: {skipped_duplicate_localnumbers}')
         
         if len(books_to_add) > 0:
             books_to_add.to_sql('books', conn, index=False, if_exists='append')
@@ -1104,8 +1157,26 @@ def upload_books():
         message = f'Successfully imported {len(books_to_add)} new book(s)'
         if duplicates_skipped > 0:
             message += f'. Skipped {duplicates_skipped} duplicate(s).'
+        if skipped_missing_required > 0:
+            message += f' Skipped {skipped_missing_required} row(s) missing required fields.'
+        if skipped_duplicate_localnumbers > 0:
+            message += f' Skipped {skipped_duplicate_localnumbers} duplicate localnumber row(s) in file.'
+
+        stats = {
+            'total_rows': total_rows,
+            'imported': len(books_to_add),
+            'skipped_missing_required': skipped_missing_required,
+            'skipped_duplicate_localnumbers': skipped_duplicate_localnumbers,
+            'skipped_existing_duplicates': duplicates_skipped
+        }
+        details = {
+            'missing_required_rows': missing_required_rows,
+            'duplicate_localnumbers_in_file': duplicate_localnumbers,
+            'duplicate_localnumbers_existing': duplicate_existing_localnumbers,
+            'detail_limit': max_detail_items
+        }
         
-        return jsonify({'success': True, 'message': message})
+        return jsonify({'success': True, 'message': message, 'stats': stats, 'details': details})
     except Exception as e:
         import traceback
         print('[upload_books] Exception occurred:')
@@ -2028,7 +2099,7 @@ if __name__ == '__main__':
     cert_file = os.path.join(app_dir, 'nginx', 'ssl', 'selfsigned.crt')
     key_file = os.path.join(app_dir, 'nginx', 'ssl', 'selfsigned.key')
     
-    app.run(host='0.0.0.0', port=5000, debug=False, ssl_context=(cert_file, key_file))
+    app.run(host='0.0.0.0', port=5000, debug=False)
 
 # WSGI entry point for production servers
 application = app
