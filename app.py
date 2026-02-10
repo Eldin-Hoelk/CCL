@@ -1280,12 +1280,19 @@ def upload_students():
             db_path = os.path.join(os.path.dirname(__file__), 'library.db')
             
             # Call the import_students.py script
+            print(f'[upload_students] Running script: {script_path}')
+            print(f'[upload_students] CSV path: {temp_csv_path}')
+            print(f'[upload_students] DB path: {db_path}')
             result = subprocess.run(
                 [sys.executable, script_path, temp_csv_path, db_path],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
+            
+            print(f'[upload_students] Return code: {result.returncode}')
+            print(f'[upload_students] stdout: {result.stdout}')
+            print(f'[upload_students] stderr: {result.stderr}')
             
             os.unlink(temp_csv_path)
             
@@ -1312,7 +1319,15 @@ def upload_students():
             else:
                 error_lines = result.stdout.strip().split('\n')
                 error_line = next((line for line in error_lines if line.startswith('ERROR:')), '')
-                error_message = error_line.replace('ERROR: ', '') if error_line else 'Unknown error occurred'
+                error_message = error_line.replace('ERROR: ', '') if error_line else None
+                
+                # Fall back to stderr if no ERROR line found
+                if not error_message and result.stderr:
+                    error_message = result.stderr.strip()
+                
+                if not error_message:
+                    error_message = 'Unknown error occurred during student import'
+                    
                 return jsonify({'success': False, 'error': error_message})
                 
         except subprocess.TimeoutExpired:
