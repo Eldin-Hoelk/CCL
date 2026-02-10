@@ -93,7 +93,6 @@
                             </span>
                         </button>
                     </div>
-                    <input type="file" id="barcode-camera-input" accept="image/*" capture style="display: none;">
                 </div>
                 <div class="field" id="book-details" style="display:none;">
                     <label class="label">Book Details</label>
@@ -187,64 +186,86 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle barcode camera scanning
     const barcodeScanBtn = document.getElementById('barcode-scan-btn');
-    const barcodeCameraInput = document.getElementById('barcode-camera-input');
+    let codeReader = null;
+    let currentStream = null;
     
-    // Simple button click handler
-    barcodeScanBtn.addEventListener('click', function(e) {
+    // Create camera modal
+    const cameraModal = document.createElement('div');
+    cameraModal.className = 'modal';
+    cameraModal.innerHTML = `
+        <div class="modal-background"></div>
+        <div class="modal-content" style="max-width: 90%; width: 600px;">
+            <div class="box">
+                <h3 class="title is-4">Scan Barcode</h3>
+                <video id="barcode-video" style="width: 100%; max-width: 600px; border: 2px solid #00d1b2;"></video>
+                <p class="help mt-3">Position the barcode in the camera view</p>
+                <button class="button is-danger mt-3" id="close-camera-btn">Close Camera</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(cameraModal);
+    
+    const videoElement = document.getElementById('barcode-video');
+    const closeCameraBtn = document.getElementById('close-camera-btn');
+    
+    barcodeScanBtn.addEventListener('click', async function(e) {
         e.preventDefault();
-        console.log('Camera button clicked');
-        barcodeCameraInput.click();
-        console.log('File input triggered');
-    });
-    
-    // Add click event to file input for debugging
-    barcodeCameraInput.addEventListener('click', function() {
-        console.log('File input received click event');
-    });
-
-    barcodeCameraInput.addEventListener('change', function(e) {
-        console.log('File input changed, files:', e.target.files.length);
-        const file = e.target.files[0];
-        if (!file) {
-            console.log('No file selected');
-            return;
-        }
-        
-        console.log('Processing file:', file.name, file.type);
-        
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const img = new Image();
-            img.onload = function() {
-                detectBarcodeZXing(img);
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-    });
-
-    function detectBarcodeZXing(img) {
-        console.log('Starting barcode detection...');
         
         if (typeof ZXing === 'undefined') {
-            alert('Barcode scanner not loaded. Please refresh the page and try again.');
+            alert('Barcode scanner not loaded. Please refresh the page.');
             return;
         }
         
-        const codeReader = new ZXing.BrowserMultiFormatReader();
+        cameraModal.classList.add('is-active');
         
-        codeReader.decodeFromImageElement(img)
-            .then(result => {
-                console.log('Barcode detected:', result.text);
-                bookLocalId.value = result.text;
-                bookLocalId.dispatchEvent(new Event('input'));
-                alert('Barcode detected: ' + result.text);
-            })
-            .catch(err => {
-                console.error('Detection failed:', err);
-                alert('No barcode detected. Make sure the barcode is clear, well-lit, and fully visible. Try again or enter manually.');
+        try {
+            codeReader = new ZXing.BrowserMultiFormatReader();
+            
+            // Get available video devices
+            const videoInputDevices = await codeReader.listVideoInputDevices();
+            
+            if (videoInputDevices.length === 0) {
+                alert('No camera found. Please check camera permissions.');
+                cameraModal.classList.remove('is-active');
+                return;
+            }
+            
+            // Use the first camera (usually back camera on mobile)
+            const selectedDeviceId = videoInputDevices[0].deviceId;
+            
+            // Start continuous decode from video device
+            codeReader.decodeFromVideoDevice(selectedDeviceId, 'barcode-video', (result, err) => {
+                if (result) {
+                    console.log('Barcode detected:', result.text);
+                    bookLocalId.value = result.text;
+                    bookLocalId.dispatchEvent(new Event('input'));
+                    
+                    // Stop scanning and close modal
+                    stopCamera();
+                    alert('Barcode scanned: ' + result.text);
+                }
+                if (err && !(err instanceof ZXing.NotFoundException)) {
+                    console.error('Scan error:', err);
+                }
             });
+            
+        } catch (error) {
+            console.error('Camera error:', error);
+            alert('Could not start camera: ' + error.message);
+            cameraModal.classList.remove('is-active');
+        }
+    });
+    
+    function stopCamera() {
+        if (codeReader) {
+            codeReader.reset();
+            codeReader = null;
+        }
+        cameraModal.classList.remove('is-active');
     }
+    
+    closeCameraBtn.addEventListener('click', stopCamera);
+    cameraModal.querySelector('.modal-background').addEventListener('click', stopCamera);
 
     // Open modal when checkout button is clicked
     checkoutBtns.forEach(btn => {
