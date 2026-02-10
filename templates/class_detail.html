@@ -224,39 +224,26 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function detectBarcodeZXing(img) {
-        console.log('Starting ZXing barcode detection...');
+        console.log('Starting barcode detection...');
         
         if (typeof ZXing === 'undefined') {
-            alert('Barcode scanner not loaded. Please refresh the page and try again, or enter the number manually.');
+            alert('Barcode scanner not loaded. Please refresh the page and try again.');
             return;
         }
         
-        try {
-            const codeReader = new ZXing.BrowserMultiFormatReader();
-            
-            // Create a canvas to get image data
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            
-            // Decode from the canvas
-            codeReader.decodeFromCanvas(canvas)
-                .then(result => {
-                    console.log('Barcode detected:', result.text);
-                    bookLocalId.value = result.text;
-                    bookLocalId.dispatchEvent(new Event('input'));
-                    alert('Barcode detected: ' + result.text);
-                })
-                .catch(err => {
-                    console.error('Barcode detection error:', err);
-                    alert('No barcode detected. Make sure the barcode is clear, well-lit, and fully visible in the photo. Try again or enter the number manually.');
-                });
-        } catch (error) {
-            console.error('Error initializing barcode scanner:', error);
-            alert('Error with barcode scanner: ' + error.message);
-        }
+        const codeReader = new ZXing.BrowserMultiFormatReader();
+        
+        codeReader.decodeFromImageElement(img)
+            .then(result => {
+                console.log('Barcode detected:', result.text);
+                bookLocalId.value = result.text;
+                bookLocalId.dispatchEvent(new Event('input'));
+                alert('Barcode detected: ' + result.text);
+            })
+            .catch(err => {
+                console.error('Detection failed:', err);
+                alert('No barcode detected. Make sure the barcode is clear, well-lit, and fully visible. Try again or enter manually.');
+            });
     }
 
     // Open modal when checkout button is clicked
